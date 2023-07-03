@@ -14,11 +14,11 @@ Read SwitchBot Thermometer Hygrometer Indoor with Micropython without cloud or h
 
 was tested with Raspberry-Pico W
 
-![picow](doc/raspberry-pico-w.jpg)
+![picow](doc/raspberry-pico-w.JPG)
 
 and ESP32 Node MCU
 
-![esp32nodemcu](doc/esp32-node-mcu.jpg)
+![esp32nodemcu](doc/esp32-node-mcu.JPG)
 
 
 
