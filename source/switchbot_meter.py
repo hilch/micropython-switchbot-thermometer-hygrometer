@@ -111,14 +111,14 @@ class SwitchbotMeter():
     @property
     def data(self):
         return {
-                "temperature" : str(self._temperature),
-                "humidity" : str(self._humidity),
-                "dew" : str(self._dewPoint),
+                "temperature" : self._temperature,
+                "humidity" : self._humidity,
+                "dew" : self._dewPoint,
                 "unit" : self._unit,
                 "battery" : self._battery,
                 "rssi" : self._rssi,
-                "MAC" : self._MAC,
-                "device_type" : self._device_type
+                "MAC" : str(self._MAC),
+                "device_type" : str(self._device_type)
         } if self._device_type else None
     
     @property
