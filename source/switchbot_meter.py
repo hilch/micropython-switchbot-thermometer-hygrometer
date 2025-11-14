@@ -8,14 +8,10 @@ import math
 
 
 _IRQ_SCAN_RESULT = const(5)
-_IRQ_SCAN_DONE = const(6)
-
 _ADV_IND = const(0x00)
-_ADV_DIRECT_IND = const(0x01)
-_ADV_SCAN_IND = const(0x02)
-_ADV_NONCONN_IND = const(0x03)
 _SCAN_RSP = const(0x4)
 
+MAX_DEVICES = const(20)
 
 def macAddress( b : bytes ):
     return ':'.join(["%02x" % int(x) for x in b]).upper()
@@ -29,41 +25,46 @@ def celsius2fahrenheit(celsius):
 
 class SwitchbotMeter():
     def __init__(self):
-        self._temperature = 0.0
+        self._temperature = -273.15
         self._humidity = 0
-        self._batteryLevel = 0
-        self._dewPoint = 0.0
+        self._batteryLevel = -1
+        self._dewPoint = -273.15
         self._unit = 'C'
         self._battery = 0
         self._rssi = 0
-        self._MAC = ''
-        self._device_type = None
-        
-    def process_scan_result(self, data ):
-        addr_type, addr, adv_type, rssi, adv_data = data
-        self._MAC = macAddress(bytes(addr))
+        self._MAC = bytes(6)
+        self._scan_rsp = bytes(5)
+        self._adv_ind = bytes(5)
+    
+    
+    def store_scan_rsp( self, mac, rssi, data ):
+        self._MAC = mac
         self._rssi = rssi
-        if adv_type == _SCAN_RSP and len(adv_data) >= 4:
-            if adv_data[4] == 0x54:
-                self._device_type = 'WoSensorTH'
-                self._scan_rsp_th(adv_data)
-            elif adv_data[4] == 0x77:
-                self._device_type = 'WoSensorTHO'
-                self._scan_rsp_tho(adv_data)
-            else:
-                return
-        elif adv_type == _ADV_IND:
-            if self._device_type == 'WoSensorTH':
-                self._adv_ind_th(adv_data)
-            elif self._device_type == 'WoSensorTHO':
-                self._adv_ind_tho(adv_data)
+        self._scan_rsp = bytes(data)
+    
+    
+    def store_adv_ind( self, rssi, data ):
+        self._rssi = rssi
+        self._adv_ind = bytes(data)
+       
+       
+    def _process_scan_results(self):
+        if self._adv_ind != bytes(5) and self._scan_rsp != bytes(5):
+            if self._scan_rsp[4] == 0x54: # WoSensorTH
+                self._process_scan_rsp_th()
+                self._process_adv_ind_th()
+            elif self._scan_rsp[4] == 0x77: # WoSensorTHO
+                self._process_scan_rsp_tho()
+                self._process_adv_ind_tho()
     
     # SBM classic
-    def _adv_ind_th(self, frame ):     
+    def _process_adv_ind_th(self):
+        frame = self._adv_ind
         pass
     
     # SBM classic
-    def _scan_rsp_th(self, frame ):
+    def _process_scan_rsp_th(self):
+        frame = self._scan_rsp
         # Absolute value of temp
         self._temperature = (frame[8] & 0x7f) + ((frame[7] & 0x7f) / 10 )  
         if not (frame[8] & 0x7f):  # Is temp negative?
@@ -78,23 +79,25 @@ class SwitchbotMeter():
         # Fahrenheit ?
         if self._unit == 'F':
             self._temperature = celsius2fahrenheit(self._temperature)
-        self.calc_dewpoint()    
+        self._calc_dewpoint()
     
     # SBM outdoor
-    def _adv_ind_tho(self, frame ):     
+    def _process_adv_ind_tho(self):
+        frame = self._adv_ind
         # Absolute value of temp
         self._temperature = (frame[16] & 0x7e) + ((frame[15] & 0x7e) / 10 )  
         if not (frame[16] & 0x7e):  # Is temp negative?
             self._temperature = -self._temperature              
         # relative humidity in %
         self._humidity = frame[17] & 0x7e
-        self.calc_dewpoint()
+        self._calc_dewpoint()
     
     # SBM outdoor
-    def _scan_rsp_tho(self, frame ):
-        self._battery = frame[6] & 0x7f 
+    def _process_scan_rsp_tho(self):
+        frame = self._scan_rsp
+        self._battery = frame[6] & 0x7f
 
-    def calc_dewpoint(self):
+    def _calc_dewpoint(self):
         # dew point in degree
         # https://en.wikipedia.org/wiki/Dew_point
         a = const(6.1121) # millibars
@@ -110,6 +113,7 @@ class SwitchbotMeter():
     
     @property
     def data(self):
+        self._process_scan_results()
         return {
                 "temperature" : self._temperature,
                 "humidity" : self._humidity,
@@ -117,52 +121,78 @@ class SwitchbotMeter():
                 "unit" : self._unit,
                 "battery" : self._battery,
                 "rssi" : self._rssi,
-                "MAC" : str(self._MAC),
-                "device_type" : str(self._device_type)
-        } if self._device_type else None
+                "MAC" : str(macAddress(self._MAC)),
+                "device_type" : self.device_type
+        } if (self.device_type
+                and self._temperature > -270
+                and self._battery > 0) else None
     
     @property
+    def MAC(self):
+        return self._MAC
+       
+    @property
     def device_type(self):
-        return self._device_type     
+        if self._scan_rsp[4] == 0x54:
+            return 'WoSensorTH'
+        elif self._scan_rsp[4] == 0x77:
+            return 'WoSensorTHO'
+        else:
+            return None
 
-    __devices = {}
 
+    def __repr__(self):
+        self._process_scan_results()
+        temperature = self._temperature if self._temperature > -270 else '-'
+        return( (f'SwitchbotMeter {self.device_type} {macAddress(self.MAC)}'
+                 f' {temperature} {self._unit}') )
+    
     @classmethod
-    def get_devices( cls ):
-        return( d.data for m, d in cls.__devices.items() )
-
-    @classmethod  
-    def bt_irq( cls, event, data):
-        global device
-        
+    def get_devices(cls):
+        return [d for d in _devices if d.data]
+    
+   
+    @classmethod
+    def bt_irq( cls, event, data):  # A single scan result.
         if event == _IRQ_SCAN_RESULT:
-            # A single scan result.
-            _, addr, _, _, _ = data
-            mac = macAddress(bytes(addr))
+            _, addr, adv_type, rssi, adv_data = data
+            if adv_type == _SCAN_RSP and len(adv_data)>=5:
+                mac = bytes(addr)
+                if adv_data[4] == 0x54 or adv_data[4] == 0x77:
+                    for d in _devices:
+                        if d.MAC == mac:
+                            d.store_scan_rsp(mac, rssi, adv_data)
+                            return
+                    for d in _devices:
+                        if d.MAC == b'\x00\x00\x00\x00\x00\x00':
+                            d.store_scan_rsp(mac, rssi, adv_data)
+                            return
+            elif adv_type == _ADV_IND:
+                mac = bytes(addr)
+                for d in _devices:
+                    if d.MAC == mac:
+                        d.store_adv_ind(rssi, adv_data)
 
-            if mac not in cls.__devices:
-                sbm = SwitchbotMeter()
-                sbm.process_scan_result( data )
-                if sbm.device_type:
-                    cls.__devices.update( { mac : sbm })
-                    cls.__devices[mac].process_scan_result( data )                  
-            else:
-                cls.__devices[mac].process_scan_result( data )
 
-
-def bt_irq(event, data):
-    SwitchbotMeter.bt_irq(event, data)
+_devices = [SwitchbotMeter() for _ in range(MAX_DEVICES)]
 
 
 # example call
 
-if( __name__ == '__main__'):    
+if( __name__ == '__main__'):
+    from micropython import alloc_emergency_exception_buf
+    import gc
+    alloc_emergency_exception_buf(100)
+    print("start")
     # Bluetooth
     ble = bluetooth.BLE()
-    ble.irq(bt_irq)
+    ble.irq(SwitchbotMeter.bt_irq)
     ble.active(True)
-    ble.gap_scan( 0, 60000, 30000, True)
+    ble.gap_scan( 0, 31000, 30000, True)
     while True:
-        print( list(SwitchbotMeter.get_devices()) )
+        for d in SwitchbotMeter.get_devices():
+            print( d.data )
+        print(gc.mem_free())
+        gc.collect()
         time.sleep(5)
     
