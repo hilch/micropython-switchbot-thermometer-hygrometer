@@ -85,11 +85,11 @@ class SwitchbotMeter():
     def _process_adv_ind_tho(self):
         frame = self._adv_ind
         # Absolute value of temp
-        self._temperature = (frame[16] & 0x7e) + ((frame[15] & 0x7e) / 10 )  
-        if not (frame[16] & 0x7e):  # Is temp negative?
+        self._temperature = (frame[16] & 0x7f) + ((frame[15] & 0x7f) / 10 )  
+        if not (frame[16] & 0x7f):  # Is temp negative?
             self._temperature = -self._temperature              
         # relative humidity in %
-        self._humidity = frame[17] & 0x7e
+        self._humidity = frame[17] & 0x7f
         self._calc_dewpoint()
     
     # SBM outdoor
