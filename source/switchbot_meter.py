@@ -148,7 +148,7 @@ class SwitchbotMeter():
                  f' {temperature} {self._unit}') )
     
     @classmethod
-    def get_device_list(cls):
+    def get_devices(cls):
         return [d for d in _devices if d.data]
     
    
