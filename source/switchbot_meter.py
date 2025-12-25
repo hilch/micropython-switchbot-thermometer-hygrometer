@@ -67,7 +67,7 @@ class SwitchbotMeter():
         frame = self._scan_rsp
         # Absolute value of temp
         self._temperature = (frame[8] & 0x7f) + ((frame[7] & 0x7f) / 10 )  
-        if not (frame[8] & 0x7f):  # Is temp negative?
+        if not (frame[8] & 0x80):  # Is temp negative?
                 self._temperature = -self._temperature
 
         # unit set by user
@@ -86,7 +86,7 @@ class SwitchbotMeter():
         frame = self._adv_ind
         # Absolute value of temp
         self._temperature = (frame[16] & 0x7f) + ((frame[15] & 0x7f) / 10 )  
-        if not (frame[16] & 0x7f):  # Is temp negative?
+        if not (frame[16] & 0x80):  # Is temp negative?
             self._temperature = -self._temperature              
         # relative humidity in %
         self._humidity = frame[17] & 0x7f
@@ -148,7 +148,7 @@ class SwitchbotMeter():
                  f' {temperature} {self._unit}') )
     
     @classmethod
-    def get_devices(cls):
+    def get_device_list(cls):
         return [d for d in _devices if d.data]
     
    
@@ -190,9 +190,8 @@ if( __name__ == '__main__'):
     ble.active(True)
     ble.gap_scan( 0, 31000, 30000, True)
     while True:
-        for d in SwitchbotMeter.get_devices():
+        for d in SwitchbotMeter.get_device_list():
             print( d.data )
-        print(gc.mem_free())
         gc.collect()
         time.sleep(5)
     
